@@ -12,8 +12,8 @@ def normalize_data(data):
 row=4
 col=5
 Nc = 2
-filepath = '.\\mrdfile/20230814/Huyang/FFE3D\\'
-# filepath = './mrdfile/1214/feiyang/'
+# filepath = '.\\mrdfile/20230814/Huyang/FFE3D\\'
+filepath = '.\\mrdfile/20240418/halfsheild1_1/'
 header1, text1, raw_data1, raw_data1_EMI = read_mrd_EMI_hym(filepath + 'Scan1.MRD')
 header2, text2, raw_data2, raw_data2_EMI = read_mrd_EMI_hym(filepath + 'Scan2.MRD')
 header3, text3, raw_data3, raw_data3_EMI = read_mrd_EMI_hym(filepath + 'Scan3.MRD')
@@ -69,7 +69,7 @@ ksp4[:, 1, :, 0] = np.imag(raw_data3_EMI)
 ksp4[:, 0, :, 1] = np.real(raw_data4_EMI)
 ksp4[:, 1, :, 1] = np.imag(raw_data4_EMI)
 
-scio.savemat('.\\trainmat\\ksp1.mat', {'ksp1':ksp1})
-scio.savemat('.\\trainmat\\ksp2.mat', {'ksp2':ksp2})
-scio.savemat('.\\trainmat\\ksp3.mat', {'ksp3':ksp3})
-scio.savemat('.\\trainmat\\ksp4.mat', {'ksp4':ksp4})
+scio.savemat('trainmat/ksp1.mat', {'ksp1':ksp1})
+scio.savemat('trainmat/ksp2.mat', {'ksp2':ksp2})
+scio.savemat('trainmat/ksp3.mat', {'ksp3':ksp3})
+scio.savemat('trainmat/ksp4.mat', {'ksp4':ksp4})

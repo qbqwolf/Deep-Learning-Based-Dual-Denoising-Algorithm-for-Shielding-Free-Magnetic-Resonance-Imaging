@@ -48,7 +48,7 @@ parser.add_argument("--epoch", type=int, default=0, help="epoch to start trainin
 parser.add_argument("--n_epochs", type=int, default=6, help="number of epochs of training")
 parser.add_argument("--dataset_name", type=str, default="firdenoise",
                     help="name of the dataset")  ## ../input/facades-dataset
-parser.add_argument("--batch_size", type=int, default=12, help="size of the batches")
+parser.add_argument("--batch_size", type=int, default=3, help="size of the batches")
 parser.add_argument("--lr", type=float, default=3e-4, help="adam: learning rate")
 parser.add_argument("--b1", type=float, default=0.5, help="adam: decay of first order momentum of gradient")
 parser.add_argument("--b2", type=float, default=0.999, help="adam: decay of first order momentum of gradient")
@@ -99,6 +99,7 @@ fake_out_buffer = ReplayBuffer()
 
 datapath=f'datasets/{opt.dataset_name}/'
 
+
 class prepareData_train(Dataset):
     def __init__(self, train_or_test):
         self.files = os.listdir(datapath + train_or_test)
@@ -111,13 +112,12 @@ class prepareData_train(Dataset):
         data = torch.load(datapath + self.train_or_test + '/' + self.files[idx])
         return data['k-space'], data['label']
 
-## Training data loader
+    ## Training data loader
 trainset = prepareData_train('train')
 dataloader = torch.utils.data.DataLoader(trainset, batch_size=opt.batch_size, shuffle=True, num_workers=0)
-## Test data loader
-
-validationset = prepareData_train('test')
-val_dataloader = torch.utils.data.DataLoader(validationset, batch_size=1,shuffle=True, num_workers=0)
+## val data loader
+valset = prepareData_train('val')
+val_dataloader = torch.utils.data.DataLoader(valset, batch_size=opt.batch_size, shuffle=True, num_workers=0)
 
 '''
 Compatible with tensorflow backend
@@ -131,34 +131,30 @@ def train():
     # ----------
     prev_time = time.time()  ## 开始时间
     losses = []
+    val_losses = []
     for epoch in range(opt.epoch, opt.n_epochs):  ## for epoch in (0, 50)
+        model.train()
         loop=tqdm(dataloader, leave=True)
-        for i, batch in enumerate(
-                loop):
+        for i, batch in enumerate(loop):
             loop.set_description('Epoch {}/{} - Training batch {}'.format(epoch + 1, opt.n_epochs, i))
             loop.update(1)
             ## 读取数据集中的真图片
             ## 将tensor变成Variable放入计算图中，tensor变成variable之后才能进行反向传播求梯度
             torch.autograd.set_detect_anomaly(True)
             input = batch[0].cuda() # inputs = data[0].reshape(-1,test,Nx,test).to(device)
-            label = batch[1].cuda()[:,:,:,0].unsqueeze(-1) # torch.Size([16, test, 448, 1]) 关闭了RF的rcv线圈的batch_size（对应16个pth文件）、实部虚部、Nx、Nc
+            # label = torch.mean(batch[1].cuda(),-1).unsqueeze(-1)
+            # torch.Size([16, test, 448, 1]) 关闭了RF的rcv线圈的batch_size（对应16个pth文件）、实部虚部、Nx、Nc
+            label = batch[1].cuda()[:,:,:,2].unsqueeze(-1)
 
             output=model(input)
-            # Total loss
-            # loss = mse(output,label)
             loss = mse(output,label)
-            # if epoch>0:
-            #     loss = torch.clamp(loss, max=100)
             optimizer.zero_grad()  ## 在反向传播之前，先将梯度归0
             loss.backward()  ## 将误差反向传播
-            # nn.utils.clip_grad_norm_(model.parameters(), max_norm=20, norm_type=2)
             optimizer.step()  ## 更新参数
-
+            # average_value = output.squeeze()[:, 0,:].mean()
             loop.set_postfix(loss=loss.item())
             losses+=[loss.item()]
-            ## ----------------------
             ##  打印日志Log Progress
-            ## ----------------------
             ## 确定剩下的大约时间  假设当前 epoch = 5， i = 100
             # batches_done = epoch * len(dataloader) + i  ## 已经训练了多长时间 5 * 400 + 100 次
             # batches_left = opt.n_epochs * len(dataloader) - batches_done  ## 还剩下 50 * 400 - 2100 次
@@ -166,6 +162,21 @@ def train():
             # prev_time = time.time()
             writer.add_scalar('training_loss', loss.item(), epoch * len(dataloader) + i)
 
+        model.eval()  # 设置为评估模式
+        print('\n testing...')
+        val_loop = tqdm(val_dataloader, leave=True)
+        with torch.no_grad():
+            for i, val_batch in enumerate(val_loop):
+                val_loop.set_description('Epoch {}/{} - Validation batch {}'.format(epoch + 1, opt.n_epochs, i))
+                val_loop.update(1)
+                val_input = val_batch[0].cuda()
+                val_label = val_batch[1].cuda()[:, :, :, 2].unsqueeze(-1)
+
+                val_output = model(val_input)
+                val_loss = mse(val_output, val_label)
+                val_loop.set_postfix(loss=val_loss.item())
+                val_losses += [val_loss.item()]
+                writer.add_scalar('validation_loss', val_loss.item(),  epoch * len(val_dataloader) + i)
         # 更新学习率
         # lr_scheduler.step()
         torch.save(model.state_dict(), "checkpoints/%s/myNet_%d.pth" % (opt.dataset_name, epoch + 1))
@@ -181,12 +192,29 @@ def train():
     # plt.plot(losses, label=f'residual CNN,train time:{total_time.total_seconds():.2f}s')
     np.save(f'./checkpoints/{opt.dataset_name}/cnn', losses)
     np.save(f'./checkpoints/{opt.dataset_name}/cnn_time', total_time.total_seconds())
-    plt.plot(losses, label=f'CNN,train time:{total_time.total_seconds():.2f}s')
+    # 保存训练损失和验证损失到文件
+    np.save(f'./checkpoints/{opt.dataset_name}/cnn', losses)
+    np.save(f'./checkpoints/{opt.dataset_name}/val_cnn', val_losses)
+
+    # 绘制训练损失曲线
+    plt.figure(figsize=(10, 5))
+    plt.subplot(1, 2, 1)
+    plt.plot(losses, label=f'ResCNN Training Loss')
     plt.xlabel("Batch")
     plt.ylabel("Loss")
     plt.title("Training Loss")
-    plt.legend(loc='upper right')  # 显示图例
-    plt.savefig(f'./checkpoints/{opt.dataset_name}/trainloss.png')
+    plt.legend(loc='upper right')
+
+    # 绘制验证损失曲线
+    plt.subplot(1, 2, 2)
+    plt.plot(val_losses, label=f'ResCNN Validation Loss')
+    plt.xlabel("Batch")
+    plt.ylabel("Loss")
+    plt.title("Validation Loss")
+    plt.legend(loc='upper right')
+
+    # 保存图像
+    plt.savefig(f'./checkpoints/{opt.dataset_name}/train_val_loss.png')
     plt.show()
 
 ## 函数的起始

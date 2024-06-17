@@ -1,4 +1,6 @@
 import argparse
+
+import matplotlib.pyplot as plt
 from scipy.io import loadmat
 from utils import *
 from dataset import *
@@ -30,8 +32,8 @@ def test():
     parser.add_argument('--size', type=int, default=128, help='size of the data (squared assumed)')
     parser.add_argument('--cuda', type=bool, default=True, help='use GPU computation')
     parser.add_argument('--n_cpu', type=int, default=8, help='number of cpu threads to use during batch generation')
-    parser.add_argument('--model_data', type=str, default='./checkpoints/firdenoise/', help='model checkpoint file')
-    parser.add_argument("--n_epochs", type=int, default=4, help="number of epochs of training")
+    parser.add_argument('--model_data', type=str, default='./checkpoints/firdenoise/1ch/', help='model checkpoint file')
+    parser.add_argument("--n_epochs", type=int, default=6, help="number of epochs of training")
     opt = parser.parse_args()
     # print(opt)
     l1 = torch.nn.L1Loss()
@@ -51,9 +53,6 @@ def test():
         model.cuda()
         mse.cuda()
         l1.cuda()
-
-
-
     datapath = opt.dataroot
 
     class prepareData_train(Dataset):
@@ -127,10 +126,14 @@ def test():
 
     all_data = loadmat(file_data)
 
-    # 取出训练数据并转为张量
-    tmp = all_data["raw_data"]
-    tmp = ifft3c(torch.from_numpy(tmp),2)
-    tmp = tmp[160:288, 16:144, 3:23]
+    # 取出干净数据
+    tmp = all_data["ksp"].transpose(2, 1, 0, 3)
+    ###########
+    x_check = tmp[:, 0, :, 0] + 1j * tmp[:, 1, :, 0]
+    x_check = np.reshape(x_check.transpose(1, 0), (Nx,Ny,row*col), order="F")
+    #############
+    tmp = ifft3c(torch.from_numpy(x_check),2)
+    # tmp = tmp[160:288, 16:144, 3:23]
     tmp = fft3c(tmp,2)
     tmp = tmp.numpy()
     tmp = np.reshape(tmp, (128,128*row*col),order="F")
@@ -140,20 +143,22 @@ def test():
     doutn = torch.from_numpy(doutn)
     doutn2=doutn+0.4*nout#add residual noise
     fig = tenshow(out,row,col,Nx,Ny)
-    fig1 = tenshow(doutn,row,col,Nx,Ny)
-    fig2 = tenshow(doutn2,row,col,Nx,Ny)
-    lenf=fig.shape[-1]-4
-    for i in range(lenf):
-        cv2.imwrite(savepa[0]+f"image_{i + 65}.png", fig1[..., i],
+    plt.show()
+    fig1 = tenshow(doutn,row,col,Nx,Ny)#加之前
+    fig2 = tenshow(doutn2,row,col,Nx,Ny)#加之后
+    lenf=fig.shape[-1]
+    id=0
+    for i in range(5,11):
+        cv2.imwrite(savepa[2]+f"image_{id + 1}.png", fig1[..., i],
                     [cv2.IMWRITE_PNG_COMPRESSION, 0])
-        cv2.imwrite(savepa[1]+f"image_{i + 65}.png", fig2[..., i],
+        cv2.imwrite(savepa[3]+f"image_{id + 1}.png", fig2[..., i],
                     [cv2.IMWRITE_PNG_COMPRESSION, 0])
+        id+=1
     print("测试完成")
 if __name__ == '__main__':
-    file_data = r'.\trainmat\raw_data5.mat'
-    savepa0='./datasets/T1_heavy/'
+    file_data = r'.\trainmat\clear/ksp4.mat'
+    savepa0='./datasets/T1phatom/'
     savepa=[savepa0+'train/label/',savepa0+'train/input/',savepa0+'val/label/',savepa0+'val/input/',savepa0+'test/']
-
     for dir in savepa:
         if os.path.exists(dir):
             pass

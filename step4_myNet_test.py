@@ -27,8 +27,9 @@ def test():
     parser.add_argument('--size', type=int, default=128, help='size of the data (squared assumed)')
     parser.add_argument('--cuda', type=bool, default=True, help='use GPU computation')
     parser.add_argument('--n_cpu', type=int, default=8, help='number of cpu threads to use during batch generation')
-    parser.add_argument('--model_data', type=str, default='./checkpoints/firdenoise/', help='model checkpoint file')
-    parser.add_argument("--n_epochs", type=int, default=4, help="number of epochs of training")
+    parser.add_argument('--outchannel', type=int, default=1, help='number of channels of out data')
+    parser.add_argument('--model_data', type=str, default='./checkpoints/firdenoise/1ch/', help='model checkpoint file')
+    parser.add_argument("--n_epochs", type=int, default=7, help="number of epochs of training")
     opt = parser.parse_args()
     # print(opt)
     l1 = torch.nn.L1Loss()
@@ -55,17 +56,6 @@ def test():
 
     datapath = opt.dataroot
 
-    class prepareData_train(Dataset):
-        def __init__(self, train_or_test):
-            self.files = os.listdir(datapath + train_or_test)
-            self.train_or_test = train_or_test
-
-        def __len__(self):
-            return len(self.files)
-
-        def __getitem__(self, idx):
-            data = torch.load(datapath + self.train_or_test + '/' + self.files[idx])
-            return data['k-space'], data['label']
     class prepareData_test(Dataset):
         def __init__(self, train_or_test):
             self.files = os.listdir(datapath + train_or_test)
@@ -101,8 +91,7 @@ def test():
         for i, batch in enumerate(dataloader, 0):
             ## 输入数据 real
             real_A = batch[0].cuda()
-            real_B = batch[1].cuda()[:, :, :, 0].unsqueeze(-1)
-            ## 通过生成器生成的 fake
+            real_B = batch[1].cuda()[:, :, :, opt.outchannel-1].unsqueeze(-1)
             fake_B = model(real_A).data
             loss = mse(fake_B, real_B)
             ## 保存图片
@@ -125,16 +114,16 @@ def test():
                 # flipped_figin = np.flipud(figin[..., i])
                 inputimg[:, :, id] = figin[..., i]
                 outimg[:, :, id] = fig[..., i]
+                # cv2.imwrite(f"./results/first_denoising/results/image_{id + 13}.png", fig[..., i],[cv2.IMWRITE_PNG_COMPRESSION, 0])
+                # cv2.imwrite(savepa0+pname+f"image_{id + 11}.png", fig[..., i],[cv2.IMWRITE_PNG_COMPRESSION, 0])
                 id += 1
-                cv2.imwrite(f"./results/first_denoising/results/image_{i + 1}.png", fig[..., i],[cv2.IMWRITE_PNG_COMPRESSION, 0])
-                cv2.imwrite(savepa0+pname+f"image_{i + 1}.png", fig[..., i],[cv2.IMWRITE_PNG_COMPRESSION, 0])
         figcontr = figshow(inputimg, outimg)
-        figcontr.savefig('./results/first_denoising/results/denoise.tif')
+        # figcontr.savefig('./results/first_denoising/results/denoise'+f'{opt.outchannel}'+'ch.png')
         plt.show()
         print("测试完成")
 if __name__ == '__main__':
-    savepa0='./datasets/T1/'
-    pname='myh/'
+    savepa0='./datasets/T1phatom/'
+    pname='test/'
     savepa=[savepa0+'train/',savepa0+'val/',savepa0+pname]
     flag=0
     for dir in savepa:

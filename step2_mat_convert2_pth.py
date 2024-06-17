@@ -1,12 +1,9 @@
 import torch
 from scipy.io import loadmat
 import random
-import os
+import cv2
 import tifffile
 from utils import *
-import scipy.io as sio
-import numpy as np
-import argparse
 def del_file(path):
     ls = os.listdir(path)
     for i in ls:
@@ -27,15 +24,18 @@ yz=Ny*Nz
 
 train_list = list(range(0, yz))  # rest
 test_list = list(range(0, yz))
-
-
 train_list.sort()
-
 test_list.sort()
+# 计算验证集的大小
+val_size = int(len(train_list) * 0.15)
+
+# 从训练集中随机选择验证集的索引
+val_list = random.sample(train_list, val_size)
 print(train_list)
+print(val_list)
 print(test_list)
 datapa0=r".\datasets\firdenoise"
-datapa=[datapa0+r"\train",datapa0+r"\test"]
+datapa=[datapa0+r"\train",datapa0+r"\val",datapa0+r"\test"]
 
 for dir in datapa:
     if os.path.exists(dir):
@@ -46,12 +46,12 @@ for dir in datapa:
         pass
     else:
         os.makedirs(dir)
+sub=""
+file_train_data = r'trainmat/'+sub+'ksp4.mat'
+file_train_label = r'trainmat/'+sub+'ksp2.mat'
 
-file_train_data = r'.\trainmat\ksp4.mat'
-file_train_label = r'.\trainmat\ksp2.mat'
-
-file_test_data = r'.\trainmat\ksp3.mat'
-file_test_label = r'.\trainmat\ksp1.mat'
+file_test_data = r'trainmat/'+sub+'ksp3.mat'
+file_test_label = r'trainmat/'+sub+'ksp1.mat'
 
 #加载训练数据和label
 train_data_dict = loadmat(file_train_data)
@@ -87,43 +87,54 @@ test_label = test_label_dict["ksp1"]
 test_label = torch.from_numpy(test_label)
 test_label = test_label.permute(2, 1, 0, 3)
 test_label = (test_label.float())
-# tenshow(test_label)
+# tenshow(test_label,row,col,Nx,Ny)
+# plt.show()
 ## train data
-
+vali=0
+traini=0
 for i in range(0, len(train_list)):
     index = train_list[i]
     train_tmp = train_data[index]#将取出训练数据入暂存变量tmp
     train_tmp = train_tmp.clone().detach()
 
-    label_tmp = train_label[index, :, :,0].clone().detach()#将取出训练label入暂存变量tmp
-    label_tmp = label_tmp.unsqueeze(-1)
-    label_tmp=torch.cat([label_tmp, label_tmp], dim=2)
-
+    label_tmp = train_label[index, :, :,:].clone().detach()#将取出训练label入暂存变量tmp
+    label_tmp = label_tmp
     tmp = {'k-space': train_tmp, 'label': label_tmp}
-    torch.save(tmp,f'{datapa[0]}\\'+ str(i) + '.pth')
+    # label_tmp=torch.cat([label_tmp, label_tmp], dim=2)
+    if i in val_list:
+        folder = datapa[1]  # 验证集文件夹
+        torch.save(tmp, f'{folder}\\' + str(vali) + '.pth')
+        vali+=1
+    else:
+        folder = datapa[0]  # 训练集文件夹
+        torch.save(tmp, f'{folder}\\' + str(traini) + '.pth')
+        traini+=1
 
-dout = torch.empty((len(train_list), 2, Nx, 2))
+dout = torch.empty((len(train_list), 2, Nx, 3))
 ## test data
 for i in range(0, len(test_list)):
     index = test_list[i]
     test_tmp = test_data[index].clone().detach()
     test_tmp = test_tmp
 
-    test_label_tmp = test_label[index, :, :, 0].clone().detach()
-    test_label_tmp = test_label_tmp.unsqueeze(-1)
-    test_label_tmp=torch.cat([test_label_tmp, test_label_tmp], dim=2)
+    test_label_tmp = test_label[index, :, :, :].clone().detach()
+    test_label_tmp = test_label_tmp
+    # test_label_tmp=torch.cat([test_label_tmp, test_label_tmp], dim=2)
     dout[i] = test_label_tmp
     tmp = {'k-space': test_tmp, 'label': test_label_tmp}
-    torch.save(tmp,f'{datapa[1]}\\'+ str(i) + '.pth')
-fig=tenshow(dout,row,col,Nx,Ny)
-plt.show()
+    torch.save(tmp,f'{datapa[2]}\\'+ str(i) + '.pth')
+fig=mulc_tenshow(dout,row,col,Nx,Ny,2)
+# plt.show()
 wflag = 0
 # fig = cv2.normalize(fig, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
 diri=f"./results/first_denoising/initial/"
+
 if os.path.exists(diri):
     pass
 else:
     os.makedirs(diri)
 lenf = fig.shape[-1]
-for i in range(lenf):
-    cv2.imwrite(diri+f"image_{i + 1}.png",fig[..., i])
+count=0
+for i in range(5,10):
+    cv2.imwrite(diri+f"image_{count + 11}.png",fig[..., i])
+    count+=1
