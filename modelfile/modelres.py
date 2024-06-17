@@ -43,7 +43,7 @@ class Net1(nn.Module):
             ResBlock(128, 64, kernel_size=9, stride=1, padding=4),
             ResBlock(64, 32, kernel_size=5, stride=1, padding=2),
             ResBlock(32, 32, kernel_size=1, stride=1, padding=0),
-            nn.Conv2d(32, 2, kernel_size=(1, 2), stride=1, padding=0)
+            nn.Conv2d(32, 2, kernel_size=(1, 4), stride=1, padding=0)
         )
 
     def forward(self, x):
