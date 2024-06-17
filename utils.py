@@ -1,6 +1,6 @@
 from __future__ import absolute_import, division, print_function
 import random
-import cv2
+
 from torch.autograd import Variable
 import torch
 import tifffile
@@ -499,7 +499,24 @@ def numshow(x,r,c):
 
 
 def tenshow(x,r,c,Nx,Ny):
-    x_check = x[:, 0, : ,0] + x[:, 1, :,0] * 1j
+    # real_mean = torch.mean(x[:, 0, :, :], dim=2)
+    # imag_mean = torch.mean(x[:, 1, :, :], dim=2)
+    real_mean = x[:, 0, :, 0]
+    imag_mean = x[:, 1, :, 0]
+    x_check = real_mean + 1j * imag_mean
+    x_check = x_check.permute(1, 0)
+    x_check = x_check.numpy()
+    x_check = np.reshape(x_check, (Nx,Ny,r*c), order="F")
+    x_check = torch.from_numpy(x_check)
+    x_checko = ifft3c(x_check.clone(),2)
+    check = torch.abs(x_checko)
+    _=plot_tensor_slices(check,r,c)
+    return check.numpy()
+
+def mulc_tenshow(x,r,c,Nx,Ny,ch):
+    real_mean = x[:, 0, :, ch]
+    imag_mean = x[:, 1, :, ch]
+    x_check = real_mean + 1j * imag_mean
     x_check = x_check.permute(1, 0)
     x_check = x_check.numpy()
     x_check = np.reshape(x_check, (Nx,Ny,r*c), order="F")
@@ -560,51 +577,51 @@ def figshow2(x, y):
     check1 = torch.from_numpy(x)
     check2 = torch.from_numpy(y)
     num_slices = check1.shape[-1]
-    figsize = (num_slices//2 * check1.shape[0] / 80, 8 * check1.shape[1] / 80)
+    num_cols = num_slices // 2
+    # 如果 num_slices 为奇数，添加一个额外的子图列
+    if num_slices % 2 == 1:
+        num_cols += 1
+    figsize = (num_cols * check1.shape[0] / 80, 8 * check1.shape[1] / 80)
     plt.rcParams['figure.dpi'] = 80
     plt.rcParams['savefig.dpi'] = 80
-
     # 定义 FOV 参数
     FOV_min_x = check1.shape[0] // 3
     FOV_max_x = 2 * check1.shape[0] // 3
     FOV_min_y = check1.shape[1] // 3
     FOV_max_y = 2 * check1.shape[1] // 3
 
-    fig, axes = plt.subplots(8, num_slices//2, figsize=figsize)  # 总共八行子图
+    fig, axes = plt.subplots(8, num_cols, figsize=figsize)  # 总共八行子图
     plt.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0, wspace=0)
     plt.margins(0, 0)
     plt.gca().xaxis.set_major_locator(plt.NullLocator())
     plt.gca().yaxis.set_major_locator(plt.NullLocator())
 
-    for i in range(num_slices//2):
-        axes[0, i].imshow(check1[:, :, i], cmap='gray', extent=[0, check1.shape[0], 0, check1.shape[1]])
-        axes[0, i].axis('off')
-
-        axes[1, i].imshow(check1[:, :, i+num_slices//2], cmap='gray', extent=[0, check1.shape[0], 0, check1.shape[1]])
-        axes[1, i].axis('off')
-
-        axes[2, i].imshow(check2[:, :, i], cmap='gray', extent=[0, check2.shape[0], 0, check2.shape[1]])
-        axes[2, i].axis('off')
-
-        axes[3, i].imshow(check2[:, :, i+num_slices//2], cmap='gray', extent=[0, check2.shape[0], 0, check2.shape[1]])
-        axes[3, i].axis('off')
+    for i in range(num_slices):
+        row = i // num_cols
+        col = i % num_cols
+        axes[row, col].imshow(check1[:, :, i], cmap='gray', extent=[0, check1.shape[0], 0, check1.shape[1]])
+        axes[row + 2, col].imshow(check2[:, :, i], cmap='gray', extent=[0, check2.shape[0], 0, check2.shape[1]])
 
         # 显示放大的图像
-        axes[4, i].imshow(check1[FOV_min_x:FOV_max_x, FOV_min_y:FOV_max_y, i], cmap='gray')
-        axes[4, i].axis('off')
-
-        axes[5, i].imshow(check1[FOV_min_x:FOV_max_x, FOV_min_y:FOV_max_y, i+num_slices//2], cmap='gray')
-        axes[5, i].axis('off')
-
-        axes[6, i].imshow(check2[FOV_min_x:FOV_max_x, FOV_min_y:FOV_max_y, i], cmap='gray')
-        axes[6, i].axis('off')
-
-        axes[7, i].imshow(check2[FOV_min_x:FOV_max_x, FOV_min_y:FOV_max_y, i+num_slices//2], cmap='gray')
-        axes[7, i].axis('off')
+        axes[row + 4, col].imshow(check1[FOV_min_x:FOV_max_x, FOV_min_y:FOV_max_y, i], cmap='gray')
+        axes[row + 6, col].imshow(check2[FOV_min_x:FOV_max_x, FOV_min_y:FOV_max_y, i], cmap='gray')
+        axes[row, col].axis('off')
+        axes[row + 2, col].axis('off')
+        axes[row + 4, col].axis('off')
+        axes[row + 6, col].axis('off')
         for j in range(4,8):
             rect = Rectangle((0, 0), int(FOV_max_y - FOV_min_y-1), int(FOV_max_x - FOV_min_x-1),
                              linewidth=6, edgecolor=(0, 0, 0), facecolor='none')
-            axes[j, i].add_patch(rect)
+            axes[j, col].add_patch(rect)
+        if(num_cols*2>num_slices and i==num_slices-1):
+            axes[row, col+1].imshow(np.zeros_like(check1[:, :, 0]), cmap='gray')
+            axes[row + 2, col+1].imshow(check2[:, :, i], cmap='gray')
+            axes[row + 4, col+1].imshow(np.zeros_like(check1[:, :, 0]), cmap='gray')
+            axes[row + 6, col+1].imshow(np.zeros_like(check2[:, :, 0]), cmap='gray')
+            axes[row, col+1].axis('off')
+            axes[row + 2, col+1].axis('off')
+            axes[row + 4, col+1].axis('off')
+            axes[row + 6, col+1].axis('off')
     return fig
 
 def invfig(x):

@@ -1,5 +1,6 @@
 # from dataset_n2v import *
 from dataset import *
+# from dataset_n2v import ToNumpy, Denormalize, Normalize, ToTensor
 from modelfile.TWGAN import *
 from lossfuc import *
 from utils import *
@@ -10,7 +11,7 @@ sys.path.append('D:\pythonspace\My_ultra_low_field\modelfile')
 from torchvision import transforms
 from torch.utils.tensorboard import SummaryWriter
 import matplotlib.pyplot as plt
-
+import cv2
 
 def del_file(path):
     ls = os.listdir(path)
@@ -70,8 +71,6 @@ class Train:
         self.nx_in = args.nx_in
         self.nch_in = args.nch_in
 
-        self.ny_out = args.ny_out
-        self.nx_out = args.nx_out
         self.nch_out = args.nch_out
 
         self.nch_ker = args.nch_ker
@@ -139,14 +138,8 @@ class Train:
 
         gpu_ids = self.gpu_ids
 
-        nch_in = self.nch_in
         nch_out = self.nch_out
-        nch_ker = self.nch_ker
 
-        size_data = (self.ny_in, self.nx_in, self.nch_in)
-        size_window = self.size_window
-
-        norm = self.norm
         name_data = self.name_data
 
         num_freq_disp = self.num_freq_disp
@@ -177,8 +170,6 @@ class Train:
         if not os.path.exists(os.path.join(dir_result_val,'images')):
             os.makedirs(os.path.join(dir_result_val,'images'))
 
-        # transform_train = transforms.Compose([Normalize(mean=0.5, std=0.5), RandomFlip(), RandomCrop((self.ny_out, self.nx_out)), ToTensor()])
-        # transform_val = transforms.Compose([Normalize(mean=0.5, std=0.5), RandomFlip(), RandomCrop((self.ny_out, self.nx_out)), ToTensor()])
         dataset_train = MyDataset(data_dir=dir_data_train)
         dataset_val = MyDataset(data_dir=dir_data_val)
         transform_inv = transforms.Compose([ToNumpy(), Denormalize(mean=0.5, std=0.5)])
@@ -453,7 +444,7 @@ class Train:
             # schedD.step()
 
             ## save
-            if (epoch % num_freq_save) == 0:
+            if (epoch % num_freq_save) == 0 or epoch==num_epoch:
                 self.save(dir_chck, netG1, optimG1,'G1',epoch)
                 self.save(dir_chck, Dis, optimDis,'Dis',epoch)
                 self.save(dir_chck, netG2, optimG2,'G2',epoch)
@@ -504,15 +495,8 @@ class Train:
         device = self.device
         gpu_ids = self.gpu_ids
 
-        nch_in = self.nch_in
         nch_out = self.nch_out
-        nch_ker = self.nch_ker
 
-        size_data = (self.ny_in, self.nx_in, self.nch_in)
-        size_window = self.size_window
-
-
-        norm = self.norm
 
         name_data = self.name_data
 
@@ -589,10 +573,12 @@ class Train:
                 inputimg[:, :, i-1] = input[0, :, :, :].squeeze()
                 outimg[:, :, i-1] = output[0, :, :, :].squeeze()
             for j in range(outimg.shape[-1]):
-                plt.imsave(os.path.join(dir_result_test, 'images', f'image_{j+1}.png'), outimg[:, :, j], cmap=cmap)
+                array = cv2.normalize(outimg[:, :, j], None, 0, 255, cv2.NORM_MINMAX)
+                cv2.imwrite(os.path.join(dir_result_test, 'images', f'image_{j+1}.png'), array)
+                # plt.imsave(os.path.join(dir_result_test, 'images', f'image_{j+1}.png'), outimg[:, :, j], cmap='gray')
             fig = figshow2(inputimg,outimg)
-            fig.savefig(os.path.join(dir_result_test, 'images/denoise.tif'))
-            # plt.show()
+            fig.savefig(os.path.join(dir_result_test, 'images/denoise.png'))
+            plt.show()
             print('test finished!')
 
 def set_requires_grad(nets, requires_grad=False):
