@@ -1,20 +1,15 @@
-from __future__ import absolute_import, division, print_function
 import random
-
 from torch.autograd import Variable
-import torch
-import tifffile
 import numpy as np
 from torchvision.utils import save_image
 import matplotlib.pyplot as plt
 import os
-import os
 import logging
 import torch
-import scipy.io
+from tools.NRSS import NRSS
 from matplotlib.patches import Rectangle
-import re
-# import argparse
+import io
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 # Nx=128
 # Ny=128
 # Nz=16
@@ -174,6 +169,7 @@ def normalization(data):
     return out
 
 def read_mrd_EMI_hym(filename):
+
     fid = open(filename, 'rb')
 
     header = {}
@@ -489,16 +485,17 @@ def plot_tensor_slices(img3d,row,col):
     for i in range(num_slices):
         row_idx, col_idx = i // cols, i % cols
         axes[row_idx, col_idx].imshow(img3d[:, :, i], cmap='gray')
-    return fig
+    return img3d
 def numshow(x,r,c):
     x_copy = np.copy(x)
     x_check = torch.from_numpy(x_copy).squeeze()
     x_checko = ifft3c(x_check.clone(),2)
     check = torch.abs(x_checko)
-    plot_tensor_slices(check,r,c)
+    img3d=plot_tensor_slices(check,r,c)
+    return norm(img3d.numpy())
 
 
-def tenshow(x,r,c,Nx,Ny):
+def tenshow(x,r,c,Nz,Nx,Ny):
     # real_mean = torch.mean(x[:, 0, :, :], dim=2)
     # imag_mean = torch.mean(x[:, 1, :, :], dim=2)
     real_mean = x[:, 0, :, 0]
@@ -506,12 +503,12 @@ def tenshow(x,r,c,Nx,Ny):
     x_check = real_mean + 1j * imag_mean
     x_check = x_check.permute(1, 0)
     x_check = x_check.numpy()
-    x_check = np.reshape(x_check, (Nx,Ny,r*c), order="F")
+    x_check = np.reshape(x_check, (Nx,Ny,Nz), order="F")
     x_check = torch.from_numpy(x_check)
     x_checko = ifft3c(x_check.clone(),2)
     check = torch.abs(x_checko)
     _=plot_tensor_slices(check,r,c)
-    return check.numpy()
+    return norm(check.numpy())
 
 def mulc_tenshow(x,r,c,Nx,Ny,ch):
     real_mean = x[:, 0, :, ch]
@@ -554,82 +551,140 @@ def compshow(x,r,c):
     _=plot_tensor_slices(check,r,c)
     return check.numpy()
 
-def figshow(x,y):
-    check1 = torch.from_numpy(x)
-    check2 = torch.from_numpy(y)
-    num_slices = check1.shape[-1]
-    figsize=(check1.shape[2]*check1.shape[0]/80,2*check1.shape[1]/80)
+def figshow(x,num=None):
+    if isinstance(x, np.ndarray):
+        x = torch.from_numpy(x)
+    num_slices = x.shape[-2]
+    cout=x.shape[-1]
+    if num is None:
+        indices = range(num_slices)
+    else:
+        num_slices=num
+        center = x.shape[-2] // 2
+        start_idx = center - num//2
+        end_idx = start_idx + num_slices
+        indices = list(range(start_idx, end_idx))
+
+    figsize=(num_slices*x.shape[0]/80,cout*x.shape[1]/80)
     plt.rcParams['figure.dpi'] = 80
     plt.rcParams['savefig.dpi'] = 80
-    fig, axes = plt.subplots(2, num_slices,figsize=figsize)
-    plt.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0, wspace=0)
-    plt.margins(0, 0)
-    plt.gca().xaxis.set_major_locator(plt.NullLocator())
-    plt.gca().yaxis.set_major_locator(plt.NullLocator())
-    for i in range(num_slices):
-        axes[0, i].imshow(check1[:, :, i], cmap='gray', extent=[0, check1.shape[0], 0, check1.shape[1]])
-        axes[1, i].imshow(check2[:, :, i], cmap='gray', extent=[0, check2.shape[0], 0, check2.shape[1]])
-        axes[0,i].axis('off')
-        axes[1,i].axis('off')
-    return fig
-
-def figshow2(x, y):
-    check1 = torch.from_numpy(x)
-    check2 = torch.from_numpy(y)
-    num_slices = check1.shape[-1]
-    num_cols = num_slices // 2
-    # 如果 num_slices 为奇数，添加一个额外的子图列
-    if num_slices % 2 == 1:
-        num_cols += 1
-    figsize = (num_cols * check1.shape[0] / 80, 8 * check1.shape[1] / 80)
-    plt.rcParams['figure.dpi'] = 80
-    plt.rcParams['savefig.dpi'] = 80
-    # 定义 FOV 参数
-    FOV_min_x = check1.shape[0] // 3
-    FOV_max_x = 2 * check1.shape[0] // 3
-    FOV_min_y = check1.shape[1] // 3
-    FOV_max_y = 2 * check1.shape[1] // 3
-
-    fig, axes = plt.subplots(8, num_cols, figsize=figsize)  # 总共八行子图
+    fig, axes = plt.subplots(cout, num_slices,figsize=figsize)
     plt.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0, wspace=0)
     plt.margins(0, 0)
     plt.gca().xaxis.set_major_locator(plt.NullLocator())
     plt.gca().yaxis.set_major_locator(plt.NullLocator())
 
-    for i in range(num_slices):
-        row = i // num_cols
-        col = i % num_cols
-        axes[row, col].imshow(check1[:, :, i], cmap='gray', extent=[0, check1.shape[0], 0, check1.shape[1]])
-        axes[row + 2, col].imshow(check2[:, :, i], cmap='gray', extent=[0, check2.shape[0], 0, check2.shape[1]])
-
-        # 显示放大的图像
-        axes[row + 4, col].imshow(check1[FOV_min_x:FOV_max_x, FOV_min_y:FOV_max_y, i], cmap='gray')
-        axes[row + 6, col].imshow(check2[FOV_min_x:FOV_max_x, FOV_min_y:FOV_max_y, i], cmap='gray')
-        axes[row, col].axis('off')
-        axes[row + 2, col].axis('off')
-        axes[row + 4, col].axis('off')
-        axes[row + 6, col].axis('off')
-        for j in range(4,8):
-            rect = Rectangle((0, 0), int(FOV_max_y - FOV_min_y-1), int(FOV_max_x - FOV_min_x-1),
-                             linewidth=6, edgecolor=(0, 0, 0), facecolor='none')
-            axes[j, col].add_patch(rect)
-        if(num_cols*2>num_slices and i==num_slices-1):
-            axes[row, col+1].imshow(np.zeros_like(check1[:, :, 0]), cmap='gray')
-            axes[row + 2, col+1].imshow(check2[:, :, i], cmap='gray')
-            axes[row + 4, col+1].imshow(np.zeros_like(check1[:, :, 0]), cmap='gray')
-            axes[row + 6, col+1].imshow(np.zeros_like(check2[:, :, 0]), cmap='gray')
-            axes[row, col+1].axis('off')
-            axes[row + 2, col+1].axis('off')
-            axes[row + 4, col+1].axis('off')
-            axes[row + 6, col+1].axis('off')
+    for j in range(cout):
+        snum = 0
+        for i in indices:
+            axes[j, snum].imshow(x[:, :, i,j], cmap='gray', vmin=0, vmax=255,
+                      extent=[0, x.shape[0], 0, x.shape[1]])
+            axes[j,snum].axis('off')
+            snum += 1
     return fig
 
-def invfig(x):
-    fig = np.zeros((x.shape[0],1,x.shape[2],x.shape[3]))
-    x = x[:, 0, :, :] + x[:, 1, :, :] * 1j
-    x_check = torch.from_numpy(x).squeeze(1)
-    x_checko = ifft2c(x_check.clone())
-    fig[:,0,:,:]=x
+
+def calculate_noise_from_corners(image, corner_size=10):
+    h, w = image.shape
+    # 提取四个角的区域
+    top_left = image[:corner_size, :corner_size]
+    top_right = image[:corner_size, -corner_size:]
+    bottom_left = image[-corner_size:, :corner_size]
+    bottom_right = image[-corner_size:, -corner_size:]
+    # 将四个角的像素值合并
+    corners = np.concatenate([top_left.ravel(), top_right.ravel(),
+                              bottom_left.ravel(), bottom_right.ravel()])
+    # 计算均值和标准差
+    noise_mean = np.mean(corners)
+    noise_std = np.std(corners)
+    return noise_mean, noise_std
+
+def figshow2(x, num=None, zoom_region=None):
+    if isinstance(x, np.ndarray):
+        x = torch.from_numpy(x)
+
+    width, height, slices, counts = x.shape
+
+    if num is None:
+        indices = range(slices)
+    else:
+        num_slices = num
+        center = slices // 2
+        start_idx = max(center - num // 2, 0)
+        end_idx = min(start_idx + num_slices, slices)
+        indices = list(range(start_idx, end_idx))
+        slices = len(indices)
+
+    figsize = (slices * height / 80, counts * height / 80)
+    plt.rcParams['figure.dpi'] = 80
+    plt.rcParams['savefig.dpi'] = 80
+    fig, axes = plt.subplots(counts, slices, figsize=figsize)
+
+    plt.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0, wspace=0)
+    plt.margins(0, 0)
+    plt.gca().xaxis.set_major_locator(plt.NullLocator())
+    plt.gca().yaxis.set_major_locator(plt.NullLocator())
+
+    if counts == 1 and slices == 1:
+        axes = np.array([[axes]])
+    elif counts == 1:
+        axes = axes[np.newaxis, :]
+    elif slices == 1:
+        axes = axes[:, np.newaxis]
+    for j in range(counts):
+        for snum, i in enumerate(indices):
+            ax = axes[j, snum]
+            img = x[:, :, i, j].cpu().numpy() if isinstance(x, torch.Tensor) else x[:, :, i, j]
+
+            ax.imshow(img, cmap='gray', vmin=0, vmax=255, extent=[0, height, 0, height])
+            ax.axis('off')
+
+            nrss_value = NRSS(img)
+
+            # 计算基于图像四角的噪声均值和标准差
+            noise_mean, noise_std = calculate_noise_from_corners(img,20)
+
+            if zoom_region is None:
+                x_center = height // 2
+                y_center = height // 2
+                zoom_size = height // 4
+                x_start = x_center
+                y_start = y_center
+                zoom_width = zoom_size * 1
+                zoom_height = zoom_size * 1
+            else:
+                x_start = zoom_region.get('x_start', 50)
+                y_start = zoom_region.get('y_start', 50)
+                zoom_width = zoom_region.get('width', 50)
+                zoom_height = zoom_region.get('height', 50)
+
+            ax_inset = inset_axes(ax, width="30%", height="30%", loc='upper right',
+                                  bbox_to_anchor=(0, 0, 1, 1),
+                                  bbox_transform=ax.transAxes)
+            ax_inset.imshow(img[x_start-zoom_width*4//3:x_start, y_start-zoom_height*1//2:y_start+zoom_height*1//2],
+                            cmap='gray', vmin=0, vmax=255)#x-上，y+右
+            ax_inset.set_xticks([])
+            ax_inset.set_yticks([])
+
+            # Add white border around the inset
+            for spine in ax_inset.spines.values():
+                spine.set_edgecolor('white')
+                spine.set_linewidth(1)
+
+            # 在主图像的右下角显示 NRSS 值
+            ax.text(0.95, 0.05, f'NRSS: {nrss_value:.2f}',
+                    color='white', fontsize=12,
+                    ha='right', va='bottom',
+                    transform=ax.transAxes,
+                    bbox=dict(facecolor='black', alpha=0.5, pad=1))
+
+            # 在图像上显示噪声水平 (均值 + 标准差)
+            ax.text(0.05, 0.95, f'std:{noise_std:.2f}\nmean:{noise_mean:.2f}',
+                    color='white', fontsize=10,
+                    ha='left', va='top',
+                    transform=ax.transAxes,
+                    bbox=dict(facecolor='black', alpha=0.5, pad=1))
+
     return fig
 
 
@@ -691,4 +746,15 @@ def find_convergence_point(loss, consecutive_batches=10, convergence_threshold=2
             consecutive_count = 0
 
     return convergence_point
-
+def norm(num):
+    min_val = np.min(num)
+    max_val = np.max(num)
+    result_normalized = (num - min_val) / (max_val - min_val)
+    result_normalized = (result_normalized * 255).astype(np.uint8)
+    return result_normalized
+def normalize_with_mean_std(fig, figin):
+    figin_mean = figin.mean()
+    figin_std = figin.std()
+    normalized_fig = (fig - fig.mean()) / fig.std()
+    normalized_fig = normalized_fig * figin_std + figin_mean
+    return normalized_fig

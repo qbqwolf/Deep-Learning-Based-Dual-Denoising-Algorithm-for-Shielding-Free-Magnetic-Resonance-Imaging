@@ -201,28 +201,31 @@ class MyTestset(torch.utils.data.Dataset):
        stuff<number>_density.pt
     """
 
-    def __init__(self, data_dir):
+    def __init__(self, data_dir,origin_dir):
         self.data_dir = data_dir
+        self.ori_dir = origin_dir
         self.transform = transforms.Compose([transforms.ToTensor(),
                                              transforms.Normalize(mean=0.5, std=0.5)])
-        images_path_list = os.listdir(data_dir)
+        images_path_list = natsorted(os.listdir(data_dir))
 
-        images_path_list = natsorted(images_path_list)
-
-
+        origins_path_list = natsorted(os.listdir(origin_dir))
 
         self.lst_data = images_path_list
+        self.lst_ori = origins_path_list
         # self.noise = 20 / 255.0 * np.random.randn(len(self.images_path_list), 181,181,1)
 
     def __getitem__(self, index):
         data = cv2.imread(os.path.join(self. data_dir, self.lst_data[index]),0)
+        ori = cv2.imread(os.path.join(self.ori_dir, self.lst_ori[index]), 0)
         if data.dtype== np.uint8:
             data = data / 255.0
-
-
+        if ori.dtype== np.uint8:
+            ori = ori / 255.0
         data=data.astype(np.float32)
         data = self.transform(data)
-        daset = {'input': data}
+        ori=ori.astype(np.float32)
+        ori = self.transform(ori)
+        daset = {'input': data,'initial': ori}
 
         return daset
 

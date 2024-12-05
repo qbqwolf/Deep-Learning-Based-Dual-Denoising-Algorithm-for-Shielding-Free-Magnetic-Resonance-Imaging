@@ -12,7 +12,9 @@ from torchvision import transforms
 from torch.utils.tensorboard import SummaryWriter
 import matplotlib.pyplot as plt
 import cv2
-
+from tools.NRSS import NRSS
+import torch
+torch.cuda.init()
 def del_file(path):
     ls = os.listdir(path)
     for i in ls:
@@ -82,9 +84,8 @@ class Train:
 
         self.gpu_ids = args.gpu_ids
 
-        if self.gpu_ids and torch.cuda.is_available():
+        if torch.cuda.is_available():
             self.device = torch.device("cuda:%d" % self.gpu_ids[0])
-            torch.cuda.set_device(self.gpu_ids[0])
         else:
             self.device = torch.device("cpu")
 
@@ -262,19 +263,18 @@ class Train:
                 #      p.data.clamp_(-0.1, 0.1)#0.01
 
                 optimDis.zero_grad()
-                out1d = netG1(input).detach()
-                gp = cal_gp(Dis, label, out1d, device)
-                loss_Dis = -torch.mean(Dis(label))+torch.mean(Dis(out1d))+ 0.5*gp
+                out1 = netG1(input)
+                gp = cal_gp(Dis, label, netG1(input), device)
+                loss_Dis = -torch.mean(Dis(label))+torch.mean(Dis(out1))+ 0.5*gp
                 # loss_Dis = torch.mean(Dis(label * (1 - mask))-torch.mean(Dis(out1d* (1 - mask)))) \
                 #            + torch.mean(Dis(out1d* (1 - mask))-torch.mean(Dis(label* (1 - mask))))
-                loss_Dis.backward()
+                loss_Dis.backward(retain_graph=True)
                 optimDis.step()
 
                 loss_Dis_train += [loss_Dis.item()]
                 writer_train.add_scalar('loss_D_batch', loss_Dis.item(), epoch * len(loader_train) + batch)
 
                 optimG1.zero_grad()
-                out1 = netG1(input)
                 G1loss = -torch.mean(Dis(out1))
                 # G1loss = torch.mean(torch.mean(Dis(out1 * (1 - mask)))-Dis(label * (1 - mask)))+\
                 #          torch.mean(torch.mean(Dis(label* (1 - mask)))-Dis(out1* (1 - mask)))
@@ -371,13 +371,13 @@ class Train:
                     label = data['label'].to(device)
 
                     # forward net and get losses
-                    out1d = netG1(input).detach()
-                    loss_Dis = -torch.mean(Dis(label)) + torch.mean(Dis(out1d )) + 0.5 * gp
+                    out1 = netG1(input)
+                    dismean1=torch.mean(Dis(out1.detach()))
+                    loss_Dis = -torch.mean(Dis(label)) + dismean1 + 0.5 * gp
                     loss_Dis_val += [loss_Dis.item()]
                     writer_val.add_scalar('loss_D_batch', loss_Dis.item(), epoch * len(loader_train) + batch)
 
-                    out1 = netG1(input)
-                    G1loss = -torch.mean(Dis(out1))
+                    G1loss = -dismean1
                     loss_G1 = G1loss+0.6*vgg_loss(out1, label)
 
                     loss_G1_val += [loss_G1.item()]
@@ -513,13 +513,13 @@ class Train:
             os.makedirs(os.path.join(dir_result_test, 'images'))
 
         dir_data_test = os.path.join(self.dir_data, name_data, self.dir_result_test)
-
+        dir_data_origin = os.path.join(self.dir_data, name_data, 'initial')
         transform_test = transforms.Compose([Normalize(mean=0.5, std=0.5), ToTensor()])
         transform_inv = transforms.Compose([ToNumpy(), Denormalize(mean=0.5, std=0.5)])
         transform_ts2np = ToNumpy()
 
         # dataset_test = Dataset(dir_data_test, data_type=self.data_type, transform=transform_test, sgm=(0, 25))
-        dataset_test = MyTestset(data_dir=dir_data_test)
+        dataset_test = MyTestset(data_dir=dir_data_test,origin_dir=dir_data_origin)
         loader_test = torch.utils.data.DataLoader(dataset_test, batch_size=1, shuffle=False, num_workers=8)
 
         num_test = len(dataset_test)
@@ -555,10 +555,9 @@ class Train:
             # Dis.eval()
             netG2.eval()
             netG3.eval()
-            inputimg=np.zeros((self.nx_in,self.ny_in,len(loader_test)))
-            outimg=np.zeros((self.nx_in,self.ny_in,len(loader_test)))
+            result=np.zeros((self.nx_in,self.ny_in,len(loader_test),3))
             for i, data in enumerate(loader_test, 1):
-                # input = data['input'].to(device)
+                ori = data['initial'].to(device)
                 input = data['input'].to(device)
 
                 out1 = netG1(input)
@@ -567,16 +566,15 @@ class Train:
                 input = transform_inv(input)
                 output = transform_inv(output)
                 out1 = transform_inv(out1)
-
-                # input = np.clip(input, 0, 1)
-                # output = np.clip(output, 0, 1)
-                inputimg[:, :, i-1] = input[0, :, :, :].squeeze()
-                outimg[:, :, i-1] = output[0, :, :, :].squeeze()
-            for j in range(outimg.shape[-1]):
-                array = cv2.normalize(outimg[:, :, j], None, 0, 255, cv2.NORM_MINMAX)
-                cv2.imwrite(os.path.join(dir_result_test, 'images', f'image_{j+1}.png'), array)
+                ori = transform_inv(ori)
+                result[:, :, i - 1, 0] = ori[0, :, :, :].squeeze()
+                result[:, :, i-1,1] = input[0, :, :, :].squeeze()
+                result[:, :, i-1,2] = output[0, :, :, :].squeeze()
+            result=norm(result)
+            for j in range(result.shape[-2]):
+                cv2.imwrite(os.path.join(dir_result_test, 'images', f'image_{j}.png'), result[:, :, j,2])
                 # plt.imsave(os.path.join(dir_result_test, 'images', f'image_{j+1}.png'), outimg[:, :, j], cmap='gray')
-            fig = figshow2(inputimg,outimg)
+            fig = figshow2(result)
             fig.savefig(os.path.join(dir_result_test, 'images/denoise.png'))
             plt.show()
             print('test finished!')

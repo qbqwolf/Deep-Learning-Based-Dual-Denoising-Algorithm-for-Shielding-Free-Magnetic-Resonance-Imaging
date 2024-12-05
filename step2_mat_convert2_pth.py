@@ -4,6 +4,7 @@ import random
 import cv2
 import tifffile
 from utils import *
+from seting import Nx,Ny,Nc,Nz,row,col
 def del_file(path):
     ls = os.listdir(path)
     for i in ls:
@@ -14,11 +15,6 @@ def del_file(path):
             os.remove(c_path)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(device)
-row=4
-col=5
-Nx=128
-Ny=128
-Nz=row*col
 yz=Ny*Nz
 
 
@@ -66,7 +62,7 @@ test_label_dict = loadmat(file_test_label)
 #取出训练数据并转为张量
 train_data = train_data_dict["ksp4"]
 train_data = torch.from_numpy(train_data)
-train_data = train_data.permute(2, 1, 0, 3)  # 3072 test 128 test
+train_data = train_data.permute(2, 1, 0, 3) #(NyNz,RI,Nx,Nc)
 train_data = (train_data.float())
 # tenshow(train_data)
 
@@ -110,7 +106,7 @@ for i in range(0, len(train_list)):
         torch.save(tmp, f'{folder}\\' + str(traini) + '.pth')
         traini+=1
 
-dout = torch.empty((len(train_list), 2, Nx, 3))
+dout = torch.empty((len(train_list), 2, Nx, Nc))
 ## test data
 for i in range(0, len(test_list)):
     index = test_list[i]
@@ -123,18 +119,4 @@ for i in range(0, len(test_list)):
     dout[i] = test_label_tmp
     tmp = {'k-space': test_tmp, 'label': test_label_tmp}
     torch.save(tmp,f'{datapa[2]}\\'+ str(i) + '.pth')
-fig=mulc_tenshow(dout,row,col,Nx,Ny,2)
-# plt.show()
-wflag = 0
-# fig = cv2.normalize(fig, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
-diri=f"./results/first_denoising/initial/"
-
-if os.path.exists(diri):
-    pass
-else:
-    os.makedirs(diri)
-lenf = fig.shape[-1]
-count=0
-for i in range(5,10):
-    cv2.imwrite(diri+f"image_{count + 11}.png",fig[..., i])
-    count+=1
+fig=mulc_tenshow(dout,row,col,Nx,Ny,0)

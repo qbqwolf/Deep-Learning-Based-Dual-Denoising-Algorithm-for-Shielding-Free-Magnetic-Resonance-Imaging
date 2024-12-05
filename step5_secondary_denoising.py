@@ -1,11 +1,7 @@
 import argparse
-import os
-
 import torch.backends.cudnn as cudnn
-# from train_n2v import *
 from train import *
-# from trainbw import *
-# from traink import *
+from train_n2v import *
 def del_file(path):
     ls = os.listdir(path)
     for i in ls:
@@ -40,20 +36,20 @@ parser.add_argument('--dir_checkpoint', default='./checkpoints', dest='dir_check
 parser.add_argument('--dir_log', default='./log', dest='dir_log')
 parser.add_argument('--dir_result', default='./results', dest='dir_result')
 parser.add_argument('--scope', default='secondary_denoising', dest='scope')
-parser.add_argument('--dir_data', default='./datasets', dest='dir_data')
+parser.add_argument('--dir_data', default='./datasets/secondary_denoising', dest='dir_data')
 
-parser.add_argument('--name_data', type=str, default='T1phatom', dest='name_data')####choose dataset and result category
+parser.add_argument('--name_data', type=str, default='N2V', dest='name_data')####choose dataset and result category
 parser.add_argument('--dir_result_test', default='test', dest='dir_result_test')###write result file name and input data name of test
 
 
-parser.add_argument('--mode', default='test', choices=['train', 'test'], dest='mode')###choose mode
-parser.add_argument('--train_continue', default='on', choices=['on', 'off'], dest='train_continue')
+parser.add_argument('--mode', default='train', choices=['train', 'test'], dest='mode')###choose mode
+parser.add_argument('--train_continue', default='off', choices=['on', 'off'], dest='train_continue')
 parser.add_argument('--norm', type=str, default='bnorm', dest='norm')
 
-parser.add_argument('--st_epoch', type=int,  default=160, dest='st_epoch')
-parser.add_argument('--num_epoch', type=int,  default=300, dest='num_epoch')
-parser.add_argument('--test_epoch', type=int,  default=300, dest='test_epoch')###load epoch number
-parser.add_argument('--batch_size', type=int, default=3, dest='batch_size')
+parser.add_argument('--st_epoch', type=int,  default=0, dest='st_epoch')
+parser.add_argument('--num_epoch', type=int,  default=80, dest='num_epoch')
+parser.add_argument('--test_epoch', type=int,  default=80, dest='test_epoch')###load epoch number
+parser.add_argument('--batch_size', type=int, default=2, dest='batch_size')
 
 parser.add_argument('--lr_G', type=float, default=1e-3, dest='lr_G')
 
@@ -75,8 +71,7 @@ parser.add_argument('--nch_ker', type=int, default=64, dest='nch_ker')
 parser.add_argument('--data_type', default='float32', dest='data_type')
 
 parser.add_argument('--num_freq_disp', type=int,  default=1, dest='num_freq_disp')
-parser.add_argument('--num_freq_save', type=int,  default=80, dest='num_freq_save')
-
+parser.add_argument('--num_freq_save', type=int,  default=40, dest='num_freq_save')
 PARSER = Parser(parser)
 
 def main():
@@ -84,16 +79,9 @@ def main():
     PARSER.write_args()
     PARSER.print_args()
 
-    TRAINER = Train(ARGS)
-
-    if ARGS.mode == 'train':
-        TRAINER.train()
-    elif ARGS.mode == 'test':
-        TRAINER.test()
-
-if __name__ == '__main__':
-    name='T1phatom'
-    fla=0
+    TRAINER = Train_n2v(ARGS)
+    name=ARGS.name_data
+    fla=1
     resultpath=[f'./results/secondary_denoising/{name}/train',f'./results/secondary_denoising/{name}/val'
         ,f'./results/secondary_denoising/{name}/test']
 
@@ -103,11 +91,18 @@ if __name__ == '__main__':
               f'./log/secondary_denoising/{name}/train',f'./log/secondary_denoising/{name}/val']
 
     make_and_del(logpath, fla)
+    if ARGS.mode == 'train':
+        TRAINER.train_n2v()
+    elif ARGS.mode == 'test':
+        TRAINER.test_n2v()
+
+if __name__ == '__main__':
+
 
     main()
     #cd D:\pythonspace\My_ultra_low_field2
-    # tensorboard --logdir=log/secondary_denoising/myultra_low/train
-    # tensorboard --logdir=log/secondary_denoising/brainweb/train
-    # tensorboard --logdir=log/secondary_denoising/kspace/train
+    # tensorboard --logdir=log/secondary_denoising/Rayleigh/train
     # tensorboard --logdir=log/secondary_denoising/N2V/train
-    # tensorboard --logdir=log/secondary_denoising/T1phatom/train
+    # tensorboard --logdir=log/secondary_denoising/Gauss/train
+    # tensorboard --logdir=log/secondary_denoising/T1/train
+    # tensorboard --logdir=log/secondary_denoising/m4a/train
